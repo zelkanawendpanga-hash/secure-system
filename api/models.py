@@ -1,0 +1,1 @@
+# Application placeholder retained for future versioned API routes.
