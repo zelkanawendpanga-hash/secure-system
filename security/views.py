@@ -69,18 +69,27 @@ class DecryptFileView(APIView):
         serializer.is_valid(raise_exception=True)
 
         uploaded_file = serializer.validated_data["file"]
-        data = uploaded_file.read()
-        nonce = os.urandom(12)
-        ciphertext, nonce, encrypted_dek, sha256 = encrypt_bytes(data)
-        try:
-            decrypted = decrypt_bytes(ciphertext, nonce, encrypted_dek)
-        except Exception:
-            add_audit(request, "file_decrypt", uploaded_file.name, "failure")
-            return Response({"detail": "Impossible de déchiffrer le fichier."}, status=status.HTTP_400_BAD_REQUEST)
-
         original_name = uploaded_file.name
         if original_name.endswith(".enc"):
             original_name = original_name[:-4]
+        record = SensitiveFile.objects.filter(owner=request.user, name=original_name).first()
+        if not record:
+            record = SensitiveFile.objects.filter(owner=request.user, name=uploaded_file.name).first()
+        if not record:
+            add_audit(request, "file_decrypt", uploaded_file.name, "failure")
+            return Response({"detail": "Fichier sécurisé introuvable."}, status=status.HTTP_404_NOT_FOUND)
+        try:
+            ciphertext = default_storage.open(record.encrypted_path, "rb").read()
+            decrypted = decrypt_bytes(
+                ciphertext,
+                bytes.fromhex(record.nonce),
+                bytes(record.encrypted_dek),
+            )
+            if hashlib.sha256(decrypted).hexdigest() != record.sha256:
+                raise ValueError("Empreinte invalide")
+        except Exception:
+            add_audit(request, "file_decrypt", uploaded_file.name, "failure")
+            return Response({"detail": "Impossible de déchiffrer le fichier."}, status=status.HTTP_400_BAD_REQUEST)
 
         response = HttpResponse(decrypted, content_type="application/octet-stream")
         response["Content-Disposition"] = f'attachment; filename="{original_name}"'

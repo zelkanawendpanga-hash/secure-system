@@ -6,13 +6,15 @@ function App() {
   const [token, setToken] = useState(localStorage.getItem('securenet_token') || '')
   const [user, setUser] = useState(null)
   const [credentials, setCredentials] = useState({ username: '', password: '', mfa_code: '' })
+  const [registerData, setRegisterData] = useState({ username: '', email: '', password: '', passwordConfirm: '' })
+  const [authMode, setAuthMode] = useState('login')
   const [message, setMessage] = useState({ recipient: '', content: '' })
   const [file, setFile] = useState(null)
   const [status, setStatus] = useState('')
   const [logs, setLogs] = useState([])
 
   const api = axios.create({
-    baseURL: 'http://localhost:8000',
+    baseURL: '',
     headers: token ? { Authorization: `Token ${token}` } : {},
   })
 
@@ -39,6 +41,32 @@ function App() {
       setUser(response.data.user)
     } catch (error) {
       setStatus(error.response?.data?.detail || 'Connexion impossible.')
+    }
+
+    async function register(event) {
+      event.preventDefault()
+      setStatus('')
+      if (registerData.password !== registerData.passwordConfirm) {
+        setStatus('Les mots de passe ne correspondent pas.')
+        return
+      }
+      try {
+        await api.post('/api/accounts/register/', {
+          username: registerData.username,
+          email: registerData.email,
+          password: registerData.password,
+        })
+        setCredentials({ username: registerData.username, password: registerData.password, mfa_code: '' })
+        setAuthMode('login')
+        setStatus('Compte créé. Vous pouvez maintenant vous connecter.')
+      } catch (error) {
+        const data = error.response?.data
+        if (data && typeof data === 'object') {
+          setStatus(Object.values(data).flat().join(' '))
+        } else {
+          setStatus('Création du compte impossible.')
+        }
+      }
     }
   }
 
@@ -85,14 +113,34 @@ function App() {
           <p>Protection des données et traçabilité des opérations sensibles.</p>
         </section>
         <section className="auth-card">
-          <h2>Connexion sécurisée</h2>
-          <form onSubmit={login}>
-            <label>Identifiant<input value={credentials.username} onChange={(e) => setCredentials({ ...credentials, username: e.target.value })} required /></label>
-            <label>Mot de passe<input type="password" value={credentials.password} onChange={(e) => setCredentials({ ...credentials, password: e.target.value })} required /></label>
-            <label>Code MFA (si activé)<input inputMode="numeric" value={credentials.mfa_code} onChange={(e) => setCredentials({ ...credentials, mfa_code: e.target.value })} /></label>
-            {status && <p className="status error">{status}</p>}
-            <button type="submit">Se connecter</button>
-          </form>
+          <div className="auth-tabs">
+            <button type="button" className={authMode === 'login' ? 'active' : ''} onClick={() => { setAuthMode('login'); setStatus('') }}>Connexion</button>
+            <button type="button" className={authMode === 'register' ? 'active' : ''} onClick={() => { setAuthMode('register'); setStatus('') }}>Créer un compte</button>
+          </div>
+          {authMode === 'login' ? (
+            <>
+              <h2>Connexion sécurisée</h2>
+              <form onSubmit={login}>
+                <label>Identifiant<input value={credentials.username} onChange={(e) => setCredentials({ ...credentials, username: e.target.value })} required /></label>
+                <label>Mot de passe<input type="password" value={credentials.password} onChange={(e) => setCredentials({ ...credentials, password: e.target.value })} required /></label>
+                <label>Code MFA (si activé)<input inputMode="numeric" value={credentials.mfa_code} onChange={(e) => setCredentials({ ...credentials, mfa_code: e.target.value })} /></label>
+                {status && <p className="status">{status}</p>}
+                <button type="submit">Se connecter</button>
+              </form>
+            </>
+          ) : (
+            <>
+              <h2>Créer un compte</h2>
+              <form onSubmit={register}>
+                <label>Identifiant<input value={registerData.username} onChange={(e) => setRegisterData({ ...registerData, username: e.target.value })} required /></label>
+                <label>Adresse e-mail<input type="email" value={registerData.email} onChange={(e) => setRegisterData({ ...registerData, email: e.target.value })} required /></label>
+                <label>Mot de passe<input type="password" minLength="8" value={registerData.password} onChange={(e) => setRegisterData({ ...registerData, password: e.target.value })} required /></label>
+                <label>Confirmer le mot de passe<input type="password" minLength="8" value={registerData.passwordConfirm} onChange={(e) => setRegisterData({ ...registerData, passwordConfirm: e.target.value })} required /></label>
+                {status && <p className="status error">{status}</p>}
+                <button type="submit">Créer mon compte employé</button>
+              </form>
+            </>
+          )}
         </section>
       </main>
     )
